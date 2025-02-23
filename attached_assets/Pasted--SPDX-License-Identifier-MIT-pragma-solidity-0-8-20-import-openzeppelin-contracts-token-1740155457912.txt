@@ -1,0 +1,259 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+contract HelpMutualSystem {
+    IERC20 public usdt; // Token USDT usado no sistema
+    address public owner;
+    uint256 public constant ENTRY_FEE = 1 * 10**18; // $1 USDT (ajustado para consistência)
+    uint256 public constant LEVELS = 6;
+
+    address public constant CREATOR_WALLET = 0x9B1E6F0BA815F3183767eaa157a447bC67097c1e; // Carteira do criador
+    address public constant MARKETING_WALLET = 0x709511F9b983C393D72d61ff5eC066d9297Deed2; // Carteira de marketing
+
+    struct User {
+        bool isRegistered;
+        uint256 currentLevel;
+        address sponsor;
+        uint256 referrals;
+        uint256 balance; // Saldo acumulado do usuário
+        uint256 donationsReceived; // Quantidade de doações recebidas no nível atual
+    }
+
+    mapping(address => User) public users;
+    mapping(uint256 => uint256) public levelAmounts; // Valor necessário para cada nível
+    address[] public queue; // Fila de usuários
+    mapping(address => uint256) public userPositionInQueue; // Mapeamento para rastrear a posição de cada usuário na fila
+    uint256 public reservePool; // Pool de reserva
+
+    event UserRegistered(address indexed user, address indexed sponsor);
+    event DonationReceived(address indexed user, uint256 amount, uint256 level);
+    event LevelUp(address indexed user, uint256 newLevel);
+    event Withdrawal(address indexed user, uint256 amount);
+    event UserCompletedAllLevels(address indexed user);
+    event FundsInjected(uint256 amount); // Evento para injeção de fundos
+    event QueueReset(); // Evento para reinício da fila
+    event FundsDistributed(address indexed wallet, uint256 amount); // Novo evento para rastrear transferências
+
+    constructor(address _usdt) {
+        usdt = IERC20(_usdt);
+        owner = msg.sender;
+
+        // Definindo os valores para cada nível
+        levelAmounts[1] = 80 * 10**18;    // $80
+        levelAmounts[2] = 320 * 10**18;   // $320
+        levelAmounts[3] = 1280 * 10**18;  // $1280
+        levelAmounts[4] = 5120 * 10**18;  // $5120
+        levelAmounts[5] = 20480 * 10**18; // $20480
+        levelAmounts[6] = 81920 * 10**18; // $81920 (valor para o nível 6)
+    }
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Not contract owner");
+        _;
+    }
+
+    // Função para verificar a aprovação de token
+    function checkAllowance(address user, uint256 amount) public view returns (bool) {
+        return usdt.allowance(user, address(this)) >= amount;
+    }
+
+    function register(address _sponsor) external {
+        require(!users[msg.sender].isRegistered, "User already registered");
+        require(checkAllowance(msg.sender, ENTRY_FEE), "Insufficient allowance");
+        require(usdt.transferFrom(msg.sender, address(this), ENTRY_FEE), "Transfer failed");
+
+        // Se o patrocinador for inválido, não define um patrocinador padrão; os fundos irão para o reservePool em distributeFunds
+        if (_sponsor == address(0) || !users[_sponsor].isRegistered) {
+            _sponsor = address(this); // Contrato como patrocinador padrão
+        }
+
+        users[msg.sender] = User(true, 1, _sponsor, 0, 0, 0);
+        if (_sponsor != address(0)) {
+            users[_sponsor].referrals++;
+        }
+
+        addToQueue(msg.sender); // Adiciona o usuário à fila
+        emit UserRegistered(msg.sender, _sponsor);
+    }
+
+    function donate() external {
+        require(users[msg.sender].isRegistered, "User not registered");
+        require(queue.length > 0, "No users in the queue");
+
+        address receiver = queue[0];
+        uint256 donationAmount = (users[receiver].currentLevel == 1) ? ENTRY_FEE : levelAmounts[users[receiver].currentLevel - 1];
+        require(checkAllowance(msg.sender, donationAmount), "Insufficient allowance");
+        require(usdt.transferFrom(msg.sender, address(this), donationAmount), "Transfer failed");
+
+        distributeFunds(receiver, donationAmount);
+        checkLevelUp(receiver);
+    }
+
+    function distributeFunds(address receiver, uint256 amount) internal {
+        User storage currentUser = users[receiver];
+
+        // 50% para o receptor
+        uint256 receiverShare = (amount * 50) / 100;
+        currentUser.balance += receiverShare;
+
+        // Incrementa o contador de doações recebidas
+        currentUser.donationsReceived++;
+
+        // Até 5% para o patrocinador direto; se não houver, vai para o reservePool
+        uint256 sponsorBonusAmount = (amount * 5) / 100;
+        if (currentUser.sponsor != address(0)) {
+            uint256 sponsorBonus = calculateSponsorBonus(currentUser.sponsor);
+            users[currentUser.sponsor].balance += (amount * sponsorBonus) / 100;
+            if (sponsorBonus < 5) {
+                addToReservePool(sponsorBonusAmount - ((amount * sponsorBonus) / 100)); // Diferença para reservePool
+            }
+        } else {
+            addToReservePool(sponsorBonusAmount); // 5% completo para reservePool
+        }
+
+        // 10% para indicações indiretas
+        distributeIndirectReferralRewards(receiver, (amount * 10) / 100);
+
+        // 15% para o pool de reserva
+        addToReservePool((amount * 15) / 100);
+
+        // 10% para a carteira do criador com fallback para reservePool
+        uint256 creatorShare = (amount * 10) / 100;
+        if (!usdt.transfer(CREATOR_WALLET, creatorShare)) {
+            addToReservePool(creatorShare); // Fallback para reservePool se falhar
+        } else {
+            emit FundsDistributed(CREATOR_WALLET, creatorShare);
+        }
+
+        // 10% para a carteira de marketing com fallback para reservePool
+        uint256 marketingShare = (amount * 10) / 100;
+        if (!usdt.transfer(MARKETING_WALLET, marketingShare)) {
+            addToReservePool(marketingShare); // Fallback para reservePool se falhar
+        } else {
+            emit FundsDistributed(MARKETING_WALLET, marketingShare);
+        }
+
+        emit DonationReceived(receiver, amount, currentUser.currentLevel);
+    }
+
+    function calculateSponsorBonus(address sponsor) internal view returns (uint256) {
+        uint256 referrals = users[sponsor].referrals;
+        if (referrals >= 4) {
+            return 5; // 5% de bônus após 4 indicações diretas
+        } else if (referrals >= 2) {
+            return 2; // 2% de bônus após 2 indicações diretas
+        } else {
+            return 0; // Sem bônus para menos de 2 indicações diretas
+        }
+    }
+
+    function distributeIndirectReferralRewards(address user, uint256 amount) internal {
+        address currentReferrer = users[user].sponsor;
+        uint256 remainingAmount = amount;
+
+        while (currentReferrer != address(0) && remainingAmount > 0) {
+            uint256 reward = (amount * 1) / 100; // 1% para cada nível de indicação indireta
+            if (reward > remainingAmount) reward = remainingAmount; // Não exceder o restante
+            users[currentReferrer].balance += reward;
+            remainingAmount -= reward;
+            currentReferrer = users[currentReferrer].sponsor;
+        }
+
+        // O restante vai para o pool de reserva
+        if (remainingAmount > 0) {
+            addToReservePool(remainingAmount);
+        }
+    }
+
+    function checkLevelUp(address user) internal {
+        User storage currentUser = users[user];
+
+        if (currentUser.donationsReceived >= 10) {
+            uint256 nextLevel = currentUser.currentLevel + 1;
+
+            // Verifica se o usuário já está no nível máximo
+            if (nextLevel > LEVELS) {
+                uint256 userBalance = currentUser.balance;
+                if (userBalance > 0) {
+                    uint256 reserveShare = (userBalance * 50) / 100; // 50% para o reservePool
+                    uint256 userShare = userBalance - reserveShare;   // 50% ficam com o usuário
+                    currentUser.balance = userShare; // Atualiza o saldo do usuário
+                    addToReservePool(reserveShare);  // Adiciona ao reservePool
+                }
+
+                removeFromQueue(user); // Remove o usuário da fila
+                emit UserCompletedAllLevels(user); // Emite evento indicando que o usuário concluiu todos os níveis
+                return;
+            }
+
+            require(currentUser.balance >= levelAmounts[nextLevel], "Insufficient balance to advance");
+            currentUser.balance -= levelAmounts[nextLevel];
+            currentUser.currentLevel = nextLevel;
+            currentUser.donationsReceived = 0;
+
+            removeFromQueue(user); // Remove o usuário da fila atual
+            addToQueue(user); // Adiciona o usuário novamente para o próximo nível
+
+            emit LevelUp(user, nextLevel);
+        }
+    }
+
+    function addToQueue(address user) internal {
+        queue.push(user);
+        userPositionInQueue[user] = queue.length - 1; // Armazena a posição do usuário na fila
+    }
+
+    function removeFromQueue(address user) internal {
+        uint256 position = userPositionInQueue[user];
+        require(position < queue.length, "User not in queue");
+
+        // Substitui o usuário pela última posição e remove o último elemento
+        address lastUser = queue[queue.length - 1];
+        queue[position] = lastUser;
+        userPositionInQueue[lastUser] = position; // Atualiza a posição do último usuário
+
+        queue.pop();
+        delete userPositionInQueue[user]; // Remove a posição do usuário removido
+    }
+
+    function withdraw(uint256 amount) external {
+        User storage currentUser = users[msg.sender];
+        require(currentUser.balance >= amount, "Insufficient balance");
+
+        currentUser.balance -= amount;
+        require(usdt.transfer(msg.sender, amount), "Transfer failed");
+
+        emit Withdrawal(msg.sender, amount);
+    }
+
+    function addToReservePool(uint256 amount) internal {
+        reservePool += amount;
+    }
+
+    // Função para o owner injetar fundos no reservePool
+    function injectFunds(uint256 amount) external onlyOwner {
+        require(amount > 0, "Amount must be greater than 0");
+        require(checkAllowance(msg.sender, amount), "Insufficient allowance");
+        require(usdt.transferFrom(msg.sender, address(this), amount), "Transfer failed");
+        reservePool += amount;
+        emit FundsInjected(amount);
+    }
+
+    // Função para o owner reiniciar a fila
+    function resetQueue() external onlyOwner {
+        for (uint256 i = 0; i < queue.length; i++) {
+            delete userPositionInQueue[queue[i]]; // Limpa o mapeamento para cada usuário
+        }
+        delete queue; // Reinicia a fila
+        emit QueueReset();
+    }
+
+    function withdrawFromReservePool(address to, uint256 amount) external onlyOwner {
+        require(reservePool >= amount, "Insufficient reserve funds");
+        reservePool -= amount;
+        require(usdt.transfer(to, amount), "Transfer failed");
+    }
+}
