@@ -1,0 +1,10 @@
+Invalid unit name "nginx#" escaped as "nginx\x23" (maybe you should use systemd-escape?).
+Invalid unit name "configuração" escaped as "configura\xc3\xa7\xc3\xa3o" (maybe you should use systemd-escape?).
+Invalid unit name "disponíveis" escaped as "dispon\xc3\xadveis" (maybe you should use systemd-escape?).
+Unit nginx\x23.service could not be found.
+Unit Listar.service could not be found.
+Unit os.service could not be found.
+Unit arquivos.service could not be found.
+Unit de.service could not be found.
+Unit configura\xc3\xa7\xc3\xa3o.service could not be found.
+Unit dispon\xc3\xadveis.service could not be found.

@@ -1,0 +1,15 @@
+{
+  "title": "Entre em Contato",
+  "description": "Tem perguntas ou precisa de suporte? Entre em contato conosco, e teremos prazer em ajudar.",
+  "formTitle": "Envie uma Mensagem",
+  "form.name": "Seu Nome",
+  "form.email": "Seu Email",
+  "form.message": "Sua Mensagem",
+  "form.submit": "Enviar Mensagem",
+  "form.sending": "Enviando...",
+  "infoTitle": "Fale Conosco",
+  "email": "Email",
+  "socials": "Siga-nos nas redes sociais para atualizações:",
+  "success": "Mensagem enviada com sucesso! Entraremos em contato em breve.",
+  "error": "Falha ao enviar a mensagem. Por favor, tente novamente mais tarde."
+}

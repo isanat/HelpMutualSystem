@@ -1,0 +1,13 @@
+{
+  "welcome": "Bem-vindo ao <span class=\"text-purple-500\">HelpMutualSystem</span>",
+  "description": "Junte-se a um sistema de ajuda mútua descentralizado na Polygon. Doe, ganhe incentivos e expanda sua rede por meio de indicações. Comece sua jornada hoje!",
+  "howToEarn.title": "Como Você Pode Ganhar com o HelpMutualSystem",
+  "howToEarn.receiveDonations.title": "Receber Doações",
+  "howToEarn.receiveDonations.description": "Faça doações para subir na fila e receber contribuições de outros participantes.",
+  "howToEarn.earnIncentives.title": "Ganhar Incentivos",
+  "howToEarn.earnIncentives.description": "Seja recompensado com tokens HELP como incentivo por sua participação e contribuições.",
+  "howToEarn.growReferrals.title": "Crescer com Indicações",
+  "howToEarn.growReferrals.description": "Convide amigos para participar e ganhe bônus à medida que eles se envolvem no sistema.",
+  "about.title": "Sobre o HelpMutualSystem",
+  "about.description": "O HelpMutualSystem é uma plataforma descentralizada construída na blockchain Polygon, projetada para promover a ajuda mútua por meio de doações e incentivos. Nossa missão é criar um sistema transparente e gratificante onde os participantes possam se apoiar mutuamente e crescer juntos. Junte-se a nós e faça parte de uma comunidade que valoriza a colaboração e o empoderamento financeiro."
+}

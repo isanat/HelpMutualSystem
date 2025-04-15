@@ -1,0 +1,15 @@
+{
+  "title": "Contact Us",
+  "description": "Have questions or need support? Reach out to us, and we’ll be happy to assist you.",
+  "formTitle": "Send Us a Message",
+  "form.name": "Your Name",
+  "form.email": "Your Email",
+  "form.message": "Your Message",
+  "form.submit": "Send Message",
+  "form.sending": "Sending...",
+  "infoTitle": "Get in Touch",
+  "email": "Email",
+  "socials": "Follow us on social media for updates:",
+  "success": "Message sent successfully! We will get back to you soon.",
+  "error": "Failed to send message. Please try again later."
+}
